@@ -1,0 +1,69 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deploy-influx-grafana
+  labels:
+    app: influx-grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: influx-grafana
+  template:
+    metadata:
+      labels:
+        app: influx-grafana
+    spec:
+      containers:
+        - name: influxdb
+          image: influxdb:1.3.9
+          imagePullPolicy: Always
+          ports:
+            - name: influxdb-port
+              containerPort: 8086
+              protocol: TCP
+          volumeMounts:
+            - name: influxdb-persistent-storage
+              mountPath: /data
+          lifecycle:
+            postStart:
+              exec:
+                command: [
+                  "/bin/bash",
+                  "-c",
+                  '"sleep 5 && influx -execute \"CREATE DATABASE k6\""'
+                ]
+        - name: grafana
+          image: devkaoru/k6_grafana:20180220-1
+          imagePullPolicy: Always
+          env:
+            - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+              value: Admin
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "true"
+            - name: GF_AUTH_BASIC_ENABLED
+              value: "false"
+          ports:
+            - name: grafana-port
+              containerPort: 3000
+              protocol: TCP
+          volumeMounts:
+            - name: grafana-persistent-storage
+              mountPath: /var/lib/grafanadb
+      # Hack to get around known issue:
+      # https://github.com/kubernetes/kubernetes/issues/2630
+      initContainers:
+        - name: volume-mount-hack
+          image: busybox
+          command: ["sh", "-c", "chown -R 1000:100 /var/lib/grafanadb"]
+          volumeMounts:
+            - name: grafana-persistent-storage
+              mountPath: /var/lib/grafanadb
+      #nodeSelector:
+        #app: influx-grafana
+      volumes:
+        - name: influxdb-persistent-storage
+          emptyDir: {}
+        - name: grafana-persistent-storage
+          emptyDir: {}
